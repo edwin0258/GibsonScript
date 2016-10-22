@@ -1,6 +1,7 @@
 /* Much thanks to all the tutorials on youtube! */
 
 var tokens = []
+var symbols = {}
 /* SYNTAX - object */
 /*
 	key: 	Is the desired function of the value, such as
@@ -8,7 +9,7 @@ var tokens = []
 				desired function of print or console.log in a
 				language.
 */
-var syntax = {"PRINT": "DECK","END":"<JACKOUT>"}
+var syntax = {"PRINT": "DECK","RETURN":"EXTRACT","VAR":"CONSTRUCT","IF":"NODE IF","ENDCONDITION":"ENDNODE","END":"<JACKOUT>"}
 
 /* LEX - https://en.wikipedia.org/wiki/Lexical_analysis */
 /*
@@ -18,17 +19,34 @@ var syntax = {"PRINT": "DECK","END":"<JACKOUT>"}
 					collect the string utill it finds the next " where it
 					will then send the string off as a token appending it
 					to the tokens array.
+	isexpr: if a expression character is detected outside of a 
+					string then it will attempt isexpr will be turned on
+					and all numbers on the line of the expression will
+					be evaluated. If it is not turned on then the numbers
+					are just numbers and will be sent to the parser as 
+					a number instead of an expression to be calculated.
+	isvar:	If the var keyword is detected the program will
+					switch this to 1 and will then begin collecting the
+					variable name. The variables value is collected 
+					normally through numbers, strings, and expressions.
 	string: This is where the string is collected when the state
 					is turned on.
+	expr:		Collects full expression while the isexpr is turned to
+					1. Outputs a number if no isexpr is turned to 0.
+	variable:		There to collect full variable name, once a equals,
+							comma, or a newline is detected the variable name
+							is saved and the variables value is collected
+							normally.
 */
 
 function lex(script){
 	var tok = ""; 
 	var state = 0;
 	var isexpr = 0;
+	var isvar = 0;
 	var string = "";
 	var expr = "";
-	var num = ""
+	var variable = "";
 	script = script.split('');
 	for(x in script){
 		char = script[x];
@@ -39,18 +57,32 @@ function lex(script){
 		else if(tok === "\n" || tok == syntax["END"]){
 			if(expr != "" && isexpr == 1){
 				tokens.push("EXPR: " + expr);
+				isexpr = 0;
 				expr = "";
 			}
-			if(expr != "" && isexpr == 0){
+			else if(expr != "" && isexpr == 0){
 				tokens.push("NUM: " + expr)
 				expr = "";
+			}
+			else if(variable != "" && isvar == 1){
+				tokens.push("VAR: " + variable);
+				isvar = 0;
+				variable = "";
 			}
 			tok = ""
 		}
 		//console.log(tok)
-		if(tok === syntax["PRINT"]){
+		if(tok.match(syntax["PRINT"]) && state === 0){
 			tokens.push(syntax["PRINT"])
 			tok = "";
+		}
+		else if(tok.match(syntax["RETURN"]) && state === 0){
+			tokens.push(syntax["RETURN"])
+			tok = "";
+		}
+		else if(tok.match(syntax["IF"])){
+			tokens.push(syntax["IF"])
+			tok = ""
 		}
 		else if(tok.match(/\d/g)){
 			expr += tok;
@@ -83,6 +115,30 @@ function lex(script){
 			tokens.push(parseInt(tok))
 			tok = ""
 		}
+		//IF ASSIGNMENT//
+		else if(tok === "=" && state === 0){
+			if(variable != ""){
+				tokens.push("VAR: " + variable)
+				variable = "";
+				isvar = 0;
+			}
+			if(tokens[tokens.length - 1] == "EQUALS"){
+				tokens[tokens.length - 1] = "EQEQ";
+			}
+			else{
+				tokens.push("EQUALS");
+			}
+			tok = "";
+		}
+		//IF VAR//
+		else if(tok.match(syntax["VAR"]) && state === 0 || tok === "_" && state === 0 && isexpr === 0){
+			isvar = 1
+			tok = ""
+		}
+		else if(isvar == 1){
+			variable += tok
+			tok = ""
+		}
 	}
 	//console.log(expr)
 	return tokens
@@ -98,6 +154,10 @@ function lex(script){
 	PRINT
 		argument: This is what should be printed
 							so PRINT 'argument'
+	VAR
+		variables will either go into a function 
+		like print where they will be decoded if
+		they exist. 
 */
 
 function parser(toks){
@@ -106,6 +166,10 @@ function parser(toks){
 		if(a == syntax["PRINT"]){
 			//if(toks[b+1]){console.error("NO")}
 			var argument = toks[b+1]
+			if(argument.match("VAR")){
+				logErrors({"type":"VAR","argument":argument})
+				var argument = symbols[argument.slice(5,argument.length)]
+			}
 			if(argument.match("STRING")){
 				console.log(argument.slice(8,argument.length))
 			}
@@ -115,14 +179,68 @@ function parser(toks){
 			else if(argument.match("EXPR")){
 				console.log(evaluateExpr(argument.slice(6,argument.length)))
 			}
+			
+		}
+		if(a.slice(0,3) === "VAR"){
+			if(toks[b+1] === "EQUALS"){
+				if(toks[b+2].slice(0,3) === "VAR"){
+					toks[b+2] = symbols[toks[b+2].slice(5,toks[b+2].length)]
+				}
+				//if there is still a variable name(in expression)
+				toks[b+2] = convertVariables(toks[b+2])
+				symbols[a.slice(5,a.length)] = toks[b+2];
+			}
+			//console.log(symbols)
+		}
+	})
+	//for returning values from GibsonScript back into JavaScript
+	return toks.map((a,b) => {
+		if(a == syntax["RETURN"]){
+			var argument = toks[b+1]
+			if(argument.match("VAR")){
+				logErrors({"type":"VAR","argument":argument})
+				var argument = symbols[argument.slice(5,argument.length)]
+			}
+			if(argument.match("STRING")){
+				return(argument.slice(8,argument.length))
+			}
+			else if(argument.match("NUM")){
+				return(parseInt(argument.slice(5,argument.length)))
+			}
+			else if(argument.match("EXPR")){
+				return(evaluateExpr(argument.slice(6,argument.length)))
+			}
 		}
 	})
 }
 
+/*
+each error_object will give logErrors the
+information to make an error given the
+circumstances.
+*/
+function logErrors(error_obj){
+	if(error_obj["type"] == "VAR"){
+		var argument = error_obj["argument"];
+		if(!symbols[argument.slice(5,argument.length)]){console.error("variable not found: " + argument.slice(5,argument.length))}
+	}
+}
+
+function convertVariables(data){
+	return data =
+	data.replace(/\_\w*/g, (match) => {
+		var var_value = symbols[match.slice(1,match.length)]
+		return var_value.slice(5,var_value.length)
+	})
+}
+
 function evaluateExpr(expression){
+	//if variable in expresssion.
+	expression = convertVariables(expression);
+	console.log(expression)
 	for(x in expression){
 		//prevent malicious intent
-		if(!x.match(/\+|-|\/|\*|\)|\(|\d/g)){
+		if(x.match(/\+|-|\/|\*|\)|\(|\d/g) == null){
 			console.error("Invalid Expression")
 			return 0;
 		}
@@ -132,7 +250,7 @@ function evaluateExpr(expression){
 
 
 /*
-GibsonScript V.000001
+GibsonScript V.000010
 To use GS:
 	1. 	Add this pen in javascript Add External JS section
 			for your pen.
@@ -145,5 +263,12 @@ To use GS:
 */
 function gibson(script){
 	var toks = lex(script)
-	parser(toks)
+	var results = parser(toks);
+	//For retrieving any values from GibsonScript back into JS.
+	return results.reduce((a,b) => {
+			if(b != undefined){
+				a.push(b);
+			}
+			return a
+	},[])
 }
