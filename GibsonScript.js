@@ -9,7 +9,7 @@ var symbols = {}
 				desired function of print or console.log in a
 				language.
 */
-var syntax = {"PRINT": "DECK","RETURN":"EXTRACT","VAR":"CONSTRUCT","IF":"NODE IF","ENDCONDITION":"ENDNODE","END":"<JACKOUT>"}
+var syntax = {"PRINT": "DECK","RETURN":"EXTRACT","VAR":"CONSTRUCT","IF":"NODE IF","ELSE":"ELSE","ENDIF":"ENDNODE","END":"<JACKOUT>"}
 
 /* LEX - https://en.wikipedia.org/wiki/Lexical_analysis */
 /*
@@ -51,7 +51,7 @@ function lex(script){
 	for(x in script){
 		char = script[x];
 		tok+=char;
-		if(tok === " "){
+		if(tok === " " || tok === "\t"){
 			tok = ""
 		}
 		else if(tok === "\n" || tok == syntax["END"]){
@@ -84,9 +84,16 @@ function lex(script){
 			tokens.push(syntax["IF"])
 			tok = ""
 		}
+		else if(tok.match(syntax["ELSE"])){
+			tokens.push(syntax["ELSE"]);
+			tok = ""
+		}
+		else if(tok.match(syntax["ENDIF"])){
+			tokens.push(syntax["ENDIF"])
+			tok = ""
+		}
 		else if(tok.match(/\d/g)){
 			expr += tok;
-			console.log("NUMBER");
 			tok = "";
 		}
 		else if(tok.match(/\+|-|\/|\*|\)|\(/g)){
@@ -140,7 +147,8 @@ function lex(script){
 			tok = ""
 		}
 	}
-	//console.log(expr)
+	//add an end statement to program to prevent loops and such.
+	tokens.push(syntax["END"]);
 	return tokens
 }
 
@@ -162,7 +170,11 @@ function lex(script){
 
 function parser(toks){
 	console.log(toks)
-	toks.map((a,b) => {
+	var i = 0;
+	var conditional = false;
+	while(i < toks.length - 1){
+		var a = toks[i];
+		var b = i;
 		if(a == syntax["PRINT"]){
 			//if(toks[b+1]){console.error("NO")}
 			var argument = toks[b+1]
@@ -192,7 +204,29 @@ function parser(toks){
 			}
 			//console.log(symbols)
 		}
-	})
+		if(a == syntax["IF"]){
+			if(evaluateExpr(toks[b+1]) === true){
+				conditional = true;
+			}
+			else{
+				while(a != syntax["ELSE"] && a != syntax["ENDIF"] && a != syntax["END"]){
+					i++
+					a = toks[i]
+				}
+			}
+		}
+		if(conditional == true && a == syntax["ELSE"]){
+			while(a != syntax["ENDIF"] && a != syntax["END"]){
+				i++
+				a = toks[i]
+			}
+			if(a == syntax["END"]){
+				console.error("MISSING: " + syntax["ENDIT"])
+			}
+			conditional = false
+		}
+		i++
+	}
 	//for returning values from GibsonScript back into JavaScript
 	return toks.map((a,b) => {
 		if(a == syntax["RETURN"]){
@@ -237,7 +271,7 @@ function convertVariables(data){
 function evaluateExpr(expression){
 	//if variable in expresssion.
 	expression = convertVariables(expression);
-	console.log(expression)
+	//console.log(expression)
 	for(x in expression){
 		//prevent malicious intent
 		if(x.match(/\+|-|\/|\*|\)|\(|\d/g) == null){
