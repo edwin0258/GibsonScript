@@ -19,7 +19,8 @@ var symbols = {};
 				desired function of print or console.log in a
 				language.
 */
-var syntax = {"PRINT": "DECK","RETURN":"EXTRACT","FUNCTION":"SYNTH","VAR":"CONSTRUCT","IF":"NODE IF","ELSE":"ELSE","ENDIF":"ENDNODE","END":"<JACKOUT>"};
+var syntax = {"PRINT": "DECK","RETURN":"EXTRACT","FUNCTION":"SYNTH","FUNCTIONCALL":"AUGMENT",
+"FUNCTIONEND":"TOKYO","VAR":"CONSTRUCT","IF":"NODE IF","ELSE":"ELSE","ENDIF":"ENDNODE","END":"<JACKOUT>"};
 
 /* LEX - https://en.wikipedia.org/wiki/Lexical_analysis */
 /*
@@ -49,14 +50,20 @@ var syntax = {"PRINT": "DECK","RETURN":"EXTRACT","FUNCTION":"SYNTH","VAR":"CONST
 							normally.
 */
 
+function upperMatch(x,y){
+	return x.toUpperCase().match(y)
+}
+
 function lex(script){
 	var tok = ""; 
 	var state = 0;
 	var isexpr = 0;
 	var isvar = 0;
+	var isfunc = 0;
 	var string = "";
 	var expr = "";
 	var variable = "";
+	var function_name = "";
 	script = script.split('');
 	for(var x in script){
 		var char = script[x];
@@ -64,7 +71,7 @@ function lex(script){
 		if(tok === " " || tok === "\t"){
 			tok = "";
 		}
-		else if(tok === "\n" || tok == syntax["END"]){
+		else if(tok === "\n" || upperMatch(tok,syntax["END"])){
 			if(expr != "" && isexpr == 1){
 				tokens.push("EXPR: " + expr);
 				isexpr = 0;
@@ -79,29 +86,35 @@ function lex(script){
 				isvar = 0;
 				variable = "";
 			}
+			else if(function_name != "" && isfunc == 1){
+				tokens.push("FNAME: " + function_name);
+				isfunc = 0;
+				function_name = "";
+			}
 			tok = "";
 		}
 		//console.log(tok)
-		if(tok.match(syntax["PRINT"]) && state === 0){
+		if(upperMatch(tok,syntax["PRINT"]) && state === 0){
 			tokens.push(syntax["PRINT"]);
 			tok = "";
 		}
-		else if(tok.match(syntax["RETURN"]) && state === 0){
+		else if(upperMatch(tok,syntax["RETURN"]) && state === 0){
 			tokens.push(syntax["RETURN"]);
 			tok = "";
 		}
-		else if(tok.match(syntax["IF"])){
+		else if(upperMatch(tok,syntax["IF"])){
 			tokens.push(syntax["IF"]);
 			tok = "";
 		}
-		else if(tok.match(syntax["ELSE"])){
+		else if(upperMatch(tok,syntax["ELSE"])){
 			tokens.push(syntax["ELSE"]);
 			tok = "";
 		}
-		else if(tok.match(syntax["ENDIF"])){
+		else if(upperMatch(tok,syntax["ENDIF"])){
 			tokens.push(syntax["ENDIF"]);
 			tok = "";
 		}
+		
 		else if(tok.match(/\d/g)){
 			expr += tok;
 			tok = "";
@@ -156,6 +169,27 @@ function lex(script){
 			variable += tok;
 			tok = "";
 		}
+		//IF FUNCTION//
+		else if(upperMatch(tok,syntax["FUNCTION"])){
+			tokens.push(syntax["FUNCTION"]);
+			tok = "";
+			isfunc = 1;
+		}
+		else if(upperMatch(tok,syntax["FUNCTIONEND"])){
+			tokens.push(syntax["FUNCTIONEND"]);
+			tok = "";
+			isfunc = 0;
+		}
+		else if(upperMatch(tok,syntax["FUNCTIONCALL"])){
+			tokens.push(syntax["FUNCTIONCALL"]);
+			tok = "";
+			isfunc = 1;
+		}
+		else if(isfunc === 1){
+			function_name += tok;
+			tok = "";
+		}
+		
 	}
 	//add an end statement to program to prevent loops and such.
 	tokens.push(syntax["END"]);
@@ -229,6 +263,35 @@ function parser(toks){
 				symbols[a.slice(5,a.length)] = toks[b+2];
 			}
 			//console.log(symbols)
+		}
+		if(a == syntax["FUNCTION"]){
+			var function_contents = ""
+			console.log("FOUND A FUNCTION: " + toks[b+1])
+			//skip over contents of function but store for later reference.
+			while(a != (syntax["FUNCTIONEND"] || syntax["END"])){
+				function_contents += "," + a;
+				i++;
+				a = toks[i];
+			}
+			//split function contents so they look like normal tokens and store them
+			//in symbols.
+			function_contents = function_contents.split(',')
+			symbols[function_contents[2].slice(7)] = function_contents.slice(3);
+			console.log("FOUND END: " + a)
+			console.log(symbols)
+		}
+		if(a == syntax["FUNCTIONCALL"]){
+			var function_n = symbols[toks[b+1].slice(7)];
+			//if function call is valid insert the functions contents
+			//into tokens to be run.
+			if(function_n){
+				function_n.map((a) => {
+					console.log(a);
+					//push each function element before the END keyword.
+					toks.splice(toks.length - 1, 0 ,a);
+				})
+				console.log(toks)
+			}
 		}
 		if(a == syntax["IF"]){
 			if(evaluateExpr(toks[b+1]) === true){
