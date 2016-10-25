@@ -1,7 +1,17 @@
-/* Much thanks to all the tutorials on youtube! */
 
-var tokens = []
-var symbols = {}
+//Node.js, get file through command line.
+var fs = require("fs");
+fs.readFile(process.argv[2], "utf8", (err,data) => {
+    if(err){
+        console.log(err);
+    }
+    console.log(data);
+    gibson(data);
+});
+
+
+var tokens = [];
+var symbols = {};
 /* SYNTAX - object */
 /*
 	key: 	Is the desired function of the value, such as
@@ -9,7 +19,7 @@ var symbols = {}
 				desired function of print or console.log in a
 				language.
 */
-var syntax = {"PRINT": "DECK","RETURN":"EXTRACT","VAR":"CONSTRUCT","IF":"NODE IF","ELSE":"ELSE","ENDIF":"ENDNODE","END":"<JACKOUT>"}
+var syntax = {"PRINT": "DECK","RETURN":"EXTRACT","FUNCTION":"SYNTH","VAR":"CONSTRUCT","IF":"NODE IF","ELSE":"ELSE","ENDIF":"ENDNODE","END":"<JACKOUT>"};
 
 /* LEX - https://en.wikipedia.org/wiki/Lexical_analysis */
 /*
@@ -48,11 +58,11 @@ function lex(script){
 	var expr = "";
 	var variable = "";
 	script = script.split('');
-	for(x in script){
-		char = script[x];
+	for(var x in script){
+		var char = script[x];
 		tok+=char;
 		if(tok === " " || tok === "\t"){
-			tok = ""
+			tok = "";
 		}
 		else if(tok === "\n" || tok == syntax["END"]){
 			if(expr != "" && isexpr == 1){
@@ -61,7 +71,7 @@ function lex(script){
 				expr = "";
 			}
 			else if(expr != "" && isexpr == 0){
-				tokens.push("NUM: " + expr)
+				tokens.push("NUM: " + expr);
 				expr = "";
 			}
 			else if(variable != "" && isvar == 1){
@@ -69,28 +79,28 @@ function lex(script){
 				isvar = 0;
 				variable = "";
 			}
-			tok = ""
+			tok = "";
 		}
 		//console.log(tok)
 		if(tok.match(syntax["PRINT"]) && state === 0){
-			tokens.push(syntax["PRINT"])
+			tokens.push(syntax["PRINT"]);
 			tok = "";
 		}
 		else if(tok.match(syntax["RETURN"]) && state === 0){
-			tokens.push(syntax["RETURN"])
+			tokens.push(syntax["RETURN"]);
 			tok = "";
 		}
 		else if(tok.match(syntax["IF"])){
-			tokens.push(syntax["IF"])
-			tok = ""
+			tokens.push(syntax["IF"]);
+			tok = "";
 		}
 		else if(tok.match(syntax["ELSE"])){
 			tokens.push(syntax["ELSE"]);
-			tok = ""
+			tok = "";
 		}
 		else if(tok.match(syntax["ENDIF"])){
-			tokens.push(syntax["ENDIF"])
-			tok = ""
+			tokens.push(syntax["ENDIF"]);
+			tok = "";
 		}
 		else if(tok.match(/\d/g)){
 			expr += tok;
@@ -104,28 +114,28 @@ function lex(script){
 		//if STRING//
 		else if(tok === "\""){
 			if(state === 0){
-				state = 1
+				state = 1;
 			}
 			else{
-				state = 0
-				tokens.push("STRING: " + string)
-				string = ""
-				tok = ""
+				state = 0;
+				tokens.push("STRING: " + string);
+				string = "";
+				tok = "";
 			}
 		}
 		else if(state == 1){
 			string+=char;
-			tok = ""
+			tok = "";
 		}
 		//if NUMBER//
 		else if(tok == parseInt(tok)){
-			tokens.push(parseInt(tok))
-			tok = ""
+			tokens.push(parseInt(tok));
+			tok = "";
 		}
 		//IF ASSIGNMENT//
 		else if(tok === "=" && state === 0){
 			if(variable != ""){
-				tokens.push("VAR: " + variable)
+				tokens.push("VAR: " + variable);
 				variable = "";
 				isvar = 0;
 			}
@@ -139,17 +149,17 @@ function lex(script){
 		}
 		//IF VAR//
 		else if(tok.match(syntax["VAR"]) && state === 0 || tok === "_" && state === 0 && isexpr === 0){
-			isvar = 1
-			tok = ""
+			isvar = 1;
+			tok = "";
 		}
 		else if(isvar == 1){
-			variable += tok
-			tok = ""
+			variable += tok;
+			tok = "";
 		}
 	}
 	//add an end statement to program to prevent loops and such.
 	tokens.push(syntax["END"]);
-	return tokens
+	return tokens;
 }
 
 /* PARSER - function */
@@ -167,9 +177,24 @@ function lex(script){
 		like print where they will be decoded if
 		they exist. 
 */
+var compiledFile = "";
+
+//Get the amount of slice for the type (string, num, expr)
+function getTypeSlice(x){
+    if(x.match("STRING")){
+		return "\"" + x.slice(8,x.length) + "\"";
+	}
+	else if(x.match("NUM")){
+		return parseInt(x.slice(5,x.length));
+	}
+	else if(x.match("EXPR")){
+		return x.slice(6,x.length);
+	}
+    
+}
 
 function parser(toks){
-	console.log(toks)
+	console.log(toks);
 	var i = 0;
 	var conditional = false;
 	while(i < toks.length - 1){
@@ -177,29 +202,30 @@ function parser(toks){
 		var b = i;
 		if(a == syntax["PRINT"]){
 			//if(toks[b+1]){console.error("NO")}
-			var argument = toks[b+1]
+			var argument = toks[b+1];
 			if(argument.match("VAR")){
-				logErrors({"type":"VAR","argument":argument})
-				var argument = symbols[argument.slice(5,argument.length)]
+				logErrors({"type":"VAR","argument":argument});
+				compiledFile += "console.log(" + argument.slice(5,argument.length) + ");\n";
+				argument = symbols[argument.slice(5,argument.length)];
+				
 			}
-			if(argument.match("STRING")){
-				console.log(argument.slice(8,argument.length))
+			if(argument.match("EXPR")){
+				argument = evaluateExpr(getTypeSlice(argument));
 			}
-			else if(argument.match("NUM")){
-				console.log(parseInt(argument.slice(5,argument.length)))
+			else{
+				argument = getTypeSlice(argument);
 			}
-			else if(argument.match("EXPR")){
-				console.log(evaluateExpr(argument.slice(6,argument.length)))
-			}
-			
+			console.log(argument);
+			compiledFile += "console.log(" + argument + ");\n";
 		}
 		if(a.slice(0,3) === "VAR"){
 			if(toks[b+1] === "EQUALS"){
 				if(toks[b+2].slice(0,3) === "VAR"){
-					toks[b+2] = symbols[toks[b+2].slice(5,toks[b+2].length)]
+					toks[b+2] = symbols[toks[b+2].slice(5,toks[b+2].length)];
 				}
 				//if there is still a variable name(in expression)
-				toks[b+2] = convertVariables(toks[b+2])
+				toks[b+2] = convertVariables(toks[b+2]);
+				compiledFile += "var " + a.slice(5,a.length) + " = " + getTypeSlice(toks[b+2]) + ";\n";
 				symbols[a.slice(5,a.length)] = toks[b+2];
 			}
 			//console.log(symbols)
@@ -210,40 +236,33 @@ function parser(toks){
 			}
 			else{
 				while(a != syntax["ELSE"] && a != syntax["ENDIF"] && a != syntax["END"]){
-					i++
-					a = toks[i]
+					i++;
+					a = toks[i];
 				}
 			}
 		}
 		if(conditional == true && a == syntax["ELSE"]){
 			while(a != syntax["ENDIF"] && a != syntax["END"]){
-				i++
-				a = toks[i]
+				i++;
+				a = toks[i];
 			}
 			if(a == syntax["END"]){
-				console.error("MISSING: " + syntax["ENDIT"])
+				console.error("MISSING: " + syntax["ENDIT"]);
 			}
-			conditional = false
+			
+			conditional = false;
 		}
-		i++
+		i++;
 	}
 	//for returning values from GibsonScript back into JavaScript
 	return toks.map((a,b) => {
 		if(a == syntax["RETURN"]){
-			var argument = toks[b+1]
+			var argument = toks[b+1];
 			if(argument.match("VAR")){
-				logErrors({"type":"VAR","argument":argument})
-				var argument = symbols[argument.slice(5,argument.length)]
+				logErrors({"type":"VAR","argument":argument});
+				argument = symbols[argument.slice(5,argument.length)];
 			}
-			if(argument.match("STRING")){
-				return(argument.slice(8,argument.length))
-			}
-			else if(argument.match("NUM")){
-				return(parseInt(argument.slice(5,argument.length)))
-			}
-			else if(argument.match("EXPR")){
-				return(evaluateExpr(argument.slice(6,argument.length)))
-			}
+			return getTypeSlice(argument)
 		}
 	})
 }
@@ -263,23 +282,23 @@ function logErrors(error_obj){
 function convertVariables(data){
 	return data =
 	data.replace(/\_\w*/g, (match) => {
-		var var_value = symbols[match.slice(1,match.length)]
-		return var_value.slice(5,var_value.length)
-	})
+		var var_value = symbols[match.slice(1,match.length)];
+		return getTypeSlice(var_value);
+	});
 }
 
 function evaluateExpr(expression){
 	//if variable in expresssion.
 	expression = convertVariables(expression);
 	//console.log(expression)
-	for(x in expression){
+	for(var x in expression){
 		//prevent malicious intent
 		if(x.match(/\+|-|\/|\*|\)|\(|\d/g) == null){
-			console.error("Invalid Expression")
+			console.error("Invalid Expression");
 			return 0;
 		}
 	}
-	return eval(expression)
+	return eval(expression);
 }
 
 
@@ -296,13 +315,19 @@ To use GS:
 			)
 */
 function gibson(script){
-	var toks = lex(script)
+	var toks = lex(script);
 	var results = parser(toks);
+	//Node.js, write a JavaScript file of the compiledFile in addition to executing program.
+	fs.writeFile(process.argv[2].replace(/\.(.*)/g,".js"), compiledFile, (err) =>{
+	    if(err){
+	        console.log(err);
+	    }
+	});
 	//For retrieving any values from GibsonScript back into JS.
 	return results.reduce((a,b) => {
 			if(b != undefined){
 				a.push(b);
 			}
-			return a
-	},[])
+			return a;
+	},[]);
 }
